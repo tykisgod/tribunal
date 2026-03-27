@@ -31,9 +31,9 @@ Tell the user the background task has been submitted. Continue other work while 
 
 **From round 2 onwards:** If the previous round identified over-engineered suggestions, pass a custom prompt that includes this context. Use the second argument of `plan-review.sh`:
 ```bash
-./scripts/plan-review.sh <file_path> "Review this updated document. In the previous round, the following suggestions were deemed over-engineered and replaced with simpler alternatives: <list the items and reasoning>. Please focus on whether the simpler fixes are correct and sufficient. Do not re-suggest the more complex approaches unless the simpler version introduces a real defect. Classify findings as [Critical] [Medium] [Suggestion]."
+./scripts/plan-review.sh <file_path> "Review this updated document using the same review criteria as round 1 (architecture, correctness, completeness, feasibility). Additional context: in the previous round, the following suggestions were deemed over-engineered and replaced with simpler alternatives: <list the items and reasoning>. Do not re-suggest the more complex approaches unless the simpler version introduces a real defect. Classify findings as [Critical] [Medium] [Suggestion]."
 ```
-This prevents Codex from re-proposing the same over-engineered solutions in a loop.
+This preserves full review criteria while preventing Codex from re-proposing the same over-engineered solutions.
 
 #### 2b. Read and Summarize Review Results
 Read `<filename>_review.md` and classify by severity:

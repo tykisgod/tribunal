@@ -1,4 +1,4 @@
-Send current branch code changes to Codex CLI for review, then fix code based on verified findings. Supports multi-round iteration until no critical issues remain.
+Send current branch code changes to Codex CLI for review, then fix code based on verified findings. Automatic loop until no critical issues remain (max 5 rounds).
 
 Arguments: $ARGUMENTS
 - No arguments: diff against develop...HEAD
@@ -8,7 +8,16 @@ Arguments: $ARGUMENTS
 
 ## Execution Flow
 
-### 1. Send to Codex for Review
+### 1-5. Automated Review Loop
+
+**Loop automatically — do not ask the user between rounds.** Stop when either:
+- No `[Critical]` issues in the Codex review
+- 5 rounds completed
+- Two consecutive rounds with no new Critical issues
+
+Each round:
+
+#### a. Send to Codex for Review
 Run in background using Bash tool with `run_in_background: true`:
 ```bash
 ./scripts/code-review.sh $ARGUMENTS
@@ -17,15 +26,20 @@ The script calls `codex exec --sandbox read-only`. Results go to stdout and `Doc
 Codex review typically takes 5-10 minutes. The system will notify when complete.
 Tell the user the background task has been submitted. Continue other work while waiting.
 
-### 2. Read and Summarize Review Results
+**From round 2 onwards:** If the previous round identified over-engineered suggestions, preserve original `$ARGUMENTS` and add `--prompt`:
+```bash
+./scripts/code-review.sh $ARGUMENTS --prompt "Review these code changes using the same review criteria as round 1 (bugs, architecture, performance, security, style). Additional context: in the previous round, the following suggestions were deemed over-engineered and simpler fixes were applied instead: <list the items and reasoning>. Do not re-suggest the more complex approaches unless the simpler version introduces a real defect. Classify findings as [Critical] [Medium] [Suggestion]."
+```
+
+#### b. Read and Summarize Review Results
 Read the output file and classify by severity:
 - **Critical**: Must-fix bugs, architecture violations, anti-patterns
 - **Medium**: Worth improving but non-blocking
 - **Suggestion**: Nice-to-have optimizations
 
-Show the summary to the user.
+Show the summary to the user. **Do NOT fix code yet — verify first.**
 
-### 3. Independent Verification (REQUIRED)
+#### c. Independent Verification (REQUIRED)
 For each Critical and Medium finding, **read the actual source code** to verify:
 - Check if the files and line numbers Codex cited actually contain the described issue
 - Verify claims about data flow, dependencies, or behavior by reading the code
@@ -38,23 +52,22 @@ For each Critical and Medium finding, **read the actual source code** to verify:
 
 Tag disproportionate suggestions as **Confirmed but over-engineered** — acknowledge the real issue but propose a simpler fix.
 
-Show verification results with evidence. Ask the user whether to proceed with fixes.
+Show verification results with evidence.
 
-### 4. Fix Code
+#### d. Fix Code
 - For each **confirmed Critical** issue, locate and fix the code
 - For findings tagged **Confirmed but over-engineered**, apply the simpler alternative fix, not Codex's original suggestion
-- For confirmed **Medium** issues the user approves, fix at discretion
+- For confirmed **Medium** issues, fix at discretion
 - Run compilation/tests after each fix to verify
 - Show a change summary when done
 
-### 5. Iterate (Optional)
-After fixes, ask the user if they want another round. If two consecutive rounds have no new Critical issues, suggest ending the loop.
+#### e. Decide Whether to Continue
+- Confirmed `[Critical]` issues were fixed this round → start next round (back to a)
+- No `[Critical]` issues this round → output "Review passed" and end
+- 5 rounds reached → output final status and end
+- Two consecutive rounds with no new Critical issues → suggest ending the loop
 
-**When running another round:** If the previous round identified over-engineered suggestions, pass a custom prompt that includes this context:
-```bash
-./scripts/code-review.sh --prompt "Review these code changes. In the previous round, the following suggestions were deemed over-engineered and simpler fixes were applied instead: <list the items and reasoning>. Focus on whether the simpler fixes are correct. Do not re-suggest the more complex approaches unless the simpler version introduces a real defect. Classify findings as [Critical] [Medium] [Suggestion]."
-```
-This prevents Codex from re-proposing the same over-engineered solutions.
+Print `=== Round N/5 ===` at the start of each round.
 
 ## Key Principles
 - **Never blindly accept Codex feedback** — it may misread code, cite wrong lines, or make assumptions. Every finding must be verified against actual source code before acting on it
