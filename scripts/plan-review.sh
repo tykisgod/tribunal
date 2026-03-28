@@ -29,13 +29,12 @@ DIR=$(dirname "$DOC_FILE")
 BASE=$(basename "$DOC_FILE" .md)
 REVIEW_FILE="${DIR}/${BASE}_review.md"
 
-# Read CLAUDE.md if present (for project coding standards)
-CODING_STANDARDS=""
+# Resolve absolute path for the document
+DOC_ABS_PATH="$(cd "$DIR" && pwd)/$( basename "$DOC_FILE")"
+
+# Resolve project root
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-if [[ -f "$PROJECT_ROOT/CLAUDE.md" ]]; then
-  CODING_STANDARDS=$(cat "$PROJECT_ROOT/CLAUDE.md")
-fi
 
 # Build review prompt
 if [[ -n "$CUSTOM_PROMPT" ]]; then
@@ -54,27 +53,20 @@ For anything you're unsure about, mark it [Uncertain] — do NOT guess.
 Be concise. Only output review findings, nothing else."
 fi
 
-DOC_CONTENT=$(cat "$DOC_FILE")
-
-FULL_PROMPT="${REVIEW_PROMPT}"
-
-if [[ -n "$CODING_STANDARDS" ]]; then
-  FULL_PROMPT="${FULL_PROMPT}
+# Tell Codex to read files from disk instead of inlining content
+FULL_PROMPT="${REVIEW_PROMPT}
 
 ---
 
-## Project Standards (from CLAUDE.md)
+## Project Standards
 
-${CODING_STANDARDS}"
-fi
-
-FULL_PROMPT="${FULL_PROMPT}
+Read the CLAUDE.md file at the project root for coding standards.
 
 ---
 
 ## Document Under Review
 
-${DOC_CONTENT}"
+Read ${DOC_ABS_PATH} for the full document content."
 
 echo ">>> Sending ${DOC_FILE} to Codex for review..." >&2
 

@@ -34,6 +34,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Validate base branch looks like a git ref (prevent flag injection)
+if [[ "$BASE_BRANCH" == -* ]]; then
+  echo "Error: invalid base branch: $BASE_BRANCH" >&2
+  exit 1
+fi
+
 # Build diff command args
 DIFF_ARGS=()
 if [[ -n "$EXT_FILTER" ]]; then
@@ -56,12 +62,6 @@ if [[ -z "$DIFF" ]]; then
   exit 0
 fi
 
-# Validate base branch looks like a git ref (prevent flag injection)
-if [[ "$BASE_BRANCH" == -* ]]; then
-  echo "Error: invalid base branch: $BASE_BRANCH" >&2
-  exit 1
-fi
-
 # Output file — sanitize branch name to prevent path traversal
 BRANCH=$(git branch --show-current | sed 's|.*/||' | tr -cd 'a-zA-Z0-9_.-')
 TIMESTAMP=$(date +"%Y-%m-%d-%H%M")
@@ -69,19 +69,9 @@ OUT_DIR="Docs/${BRANCH}"
 mkdir -p "$OUT_DIR"
 REVIEW_FILE="${OUT_DIR}/codex-code-review_${TIMESTAMP}.md"
 
-# Read project context files
-PROJECT_CONTEXT=""
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-for CTX_FILE in CLAUDE.md AGENTS.md; do
-  if [[ -f "$PROJECT_ROOT/$CTX_FILE" ]]; then
-    PROJECT_CONTEXT="${PROJECT_CONTEXT}
-
-## ${CTX_FILE}
-
-$(cat "$PROJECT_ROOT/$CTX_FILE")"
-  fi
-done
+# Write diff to temp file so Codex reads it from disk (avoids ARG_MAX)
+DIFF_FILE=$(mktemp /tmp/code-review-diff-XXXXXXXX)
+printf '%s' "$DIFF" > "$DIFF_FILE"
 
 # Build review prompt
 if [[ -n "$CUSTOM_PROMPT" ]]; then
@@ -102,30 +92,28 @@ For anything you're unsure about, mark it [Uncertain] — do NOT guess.
 Be concise. Only output review findings."
 fi
 
-FULL_PROMPT="${REVIEW_PROMPT}"
-
-if [[ -n "$PROJECT_CONTEXT" ]]; then
-  FULL_PROMPT="${FULL_PROMPT}
+# Tell Codex to read files from disk instead of inlining content
+FULL_PROMPT="${REVIEW_PROMPT}
 
 ---
 
 ## Project Context
-${PROJECT_CONTEXT}"
-fi
 
-FULL_PROMPT="${FULL_PROMPT}
+Read the CLAUDE.md file at the project root for coding standards.
+Read the AGENTS.md file at the project root for architecture rules (if it exists).
 
 ---
 
 ## Code Changes (${DIFF_DESC})
 
-\`\`\`diff
-${DIFF}
-\`\`\`"
+Read ${DIFF_FILE} for the full diff."
 
 echo ">>> Sending code changes (${DIFF_DESC}) to Codex for review..." >&2
+echo ">>> Diff written to ${DIFF_FILE} ($(wc -l < "$DIFF_FILE") lines)" >&2
 
 codex exec --sandbox read-only "$FULL_PROMPT" | tee "$REVIEW_FILE"
+
+rm -f "$DIFF_FILE"
 
 echo "" >&2
 echo ">>> Review saved to: ${REVIEW_FILE}" >&2
