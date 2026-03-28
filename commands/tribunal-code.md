@@ -61,6 +61,11 @@ Show verification results with evidence.
 - Run compilation/tests after each fix to verify
 - Show a change summary when done
 
+**Pre-existing test failures:** If compilation or tests reveal failures unrelated to the current changes (e.g., pre-existing bugs in other modules), **always ask the user** before proceeding:
+1. **Investigate and fix** — dig into the failures and attempt a fix
+2. **Skip and continue** — note the failures and proceed with the review loop
+Do not silently skip failures — let the user decide.
+
 #### e. Decide Whether to Continue
 - Confirmed `[Critical]` issues were fixed this round → start next round (back to a)
 - No `[Critical]` issues this round → output "Review passed" and end
